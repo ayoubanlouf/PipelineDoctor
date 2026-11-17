@@ -3,10 +3,12 @@
 > **Autonomous, Event-Driven Self-Healing CI/CD & QA Agent System**  
 > *Deterministic verification inside ephemeral sandboxes — zero unverified PRs.*
 
+[![CI](https://github.com/ayoubanlouf/PipelineDoctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ayoubanlouf/PipelineDoctor/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.112-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.3-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![Docker](https://img.shields.io/badge/Docker-Ephemeral%20Sandbox-2496ED.svg?logo=docker)](https://www.docker.com/)
+[![n8n](https://img.shields.io/badge/n8n-Orchestration-EA4B71.svg?logo=n8n)](https://n8n.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -75,7 +77,7 @@ flowchart TD
 
 ## 📊 Verified Benchmark Performance
 
-PipelineDoctor includes an end-to-end simulation and benchmark suite ([`scripts/run_benchmark.py`](file:///c:/Users/Msi/Downloads/PipelineDoctor/scripts/run_benchmark.py)) evaluated strictly against a real local LLM (**`Qwen3.5 9B`** on Bionic at `http://localhost:1235/v1`) and real **Docker containers** (`pipelinedoctor-sandbox:latest`):
+PipelineDoctor includes an end-to-end simulation and benchmark suite ([`scripts/run_benchmark.py`](scripts/run_benchmark.py)) evaluated strictly against a real local LLM (**`Qwen3.5 9B`** on Bionic at `http://localhost:1235/v1`) and real **Docker containers** (`pipelinedoctor-sandbox:latest`):
 
 ```bash
 python scripts/run_benchmark.py --verbose
@@ -139,7 +141,7 @@ cp .env.example .env
 
 ### 3. Run the Test Suite
 ```bash
-# Execute fast, deterministic pytest suite (8 passing tests)
+# Execute fast, deterministic pytest suite (9 passing tests)
 pytest -v
 ```
 
@@ -183,7 +185,7 @@ docker compose up -d
 ### 2. Import the Ready-to-Use n8n Workflow
 1. Open `http://localhost:5678` in your browser.
 2. Select **Add workflow** -> **Import from File**.
-3. Choose [`n8n/pipeline_doctor_workflow.json`](file:///c:/Users/Msi/Downloads/PipelineDoctor/n8n/pipeline_doctor_workflow.json) (or browse to `/workflows` in the container).
+3. Choose [`n8n/pipeline_doctor_workflow.json`](n8n/pipeline_doctor_workflow.json) (or browse to `/workflows` in the container).
 4. Update the placeholder Slack/Discord webhook URLs in the two alert nodes.
 5. Set your GitHub repository webhook to deliver `workflow_run` events to:
    ```
@@ -233,4 +235,4 @@ PipelineDoctor/
 
 ## 📜 License
 
-Distributed under the [MIT License](LICENSE).
+Distributed under the MIT License.
