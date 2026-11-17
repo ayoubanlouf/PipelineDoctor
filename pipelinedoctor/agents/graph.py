@@ -63,17 +63,28 @@ def create_healing_graph(
 
         # Pre-fetch target file contents
         file_contents = dict(state.get("fetched_file_contents", {}))
+        local_repo = state.get("local_repo_path")
         for target_file in triage_report.target_files:
             if target_file not in file_contents:
-                try:
-                    content = gh.fetch_file_content(
-                        repo_name=event.repo,
-                        file_path=target_file,
-                        ref=event.commit_sha,
-                    )
-                    file_contents[target_file] = content
-                except Exception:
-                    file_contents[target_file] = ""
+                content = ""
+                if local_repo:
+                    from pathlib import Path
+                    local_f = Path(local_repo) / target_file
+                    if local_f.exists():
+                        try:
+                            content = local_f.read_text(encoding="utf-8")
+                        except Exception:
+                            pass
+                if not content:
+                    try:
+                        content = gh.fetch_file_content(
+                            repo_name=event.repo,
+                            file_path=target_file,
+                            ref=event.commit_sha,
+                        )
+                    except Exception:
+                        content = ""
+                file_contents[target_file] = content
 
         call_count = state.get("llm_call_count", 0) + 1
 

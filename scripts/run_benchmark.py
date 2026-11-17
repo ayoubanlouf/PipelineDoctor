@@ -2,20 +2,23 @@
 """
 scripts/run_benchmark.py
 ========================
-Deterministic Local E2E Simulation & Benchmark Harness for PipelineDoctor.
+Live E2E Simulation & Benchmark Harness for PipelineDoctor.
 
-Spins up realistic sample projects across 3 failure archetypes:
+Executes strictly against:
+- Local LLM: Qwen3.5 9B at http://localhost:1235/v1
+- Sandbox: Real Docker containers with volume mounts and resource isolation
+
+Scenarios evaluated:
 1. selector_drift : Playwright / DOM selector drift (resolved on pass@1)
 2. app_bug        : Logic error in business logic (resolved on pass@1 or retry)
 3. flaky_env      : Hard external dependency failure (safely escalated on max iterations)
 
 Evaluates the LangGraph state machine (Triage -> Patch -> Verify) end-to-end,
-captures metrics (pass@1, pass@3, MTTF, iterations), and prints a summary report.
+captures real unedited metrics (pass@1, pass@3, MTTF, iterations), and prints a summary report.
 
 Usage:
-    python scripts/run_benchmark.py --mock-llm
-    python scripts/run_benchmark.py --live-llm
-    python scripts/run_benchmark.py --mock-llm --verbose
+    python scripts/run_benchmark.py
+    python scripts/run_benchmark.py --verbose
 """
 
 from __future__ import annotations
@@ -42,9 +45,6 @@ from pipelinedoctor.schemas import (
     AgentPhase,
     AgentState,
     FailingJob,
-    FailureType,
-    PatchProposal,
-    TriageReport,
     WorkflowFailureEvent,
 )
 
@@ -65,7 +65,7 @@ class BenchmarkResult:
 
 
 # ---------------------------------------------------------------------------
-# Scenario Fixture Builders
+# Scenario Fixture Builders (Real Code & Failing Tests)
 # ---------------------------------------------------------------------------
 
 def create_selector_drift_scenario(base_dir: Path) -> dict[str, Any]:
@@ -73,43 +73,22 @@ def create_selector_drift_scenario(base_dir: Path) -> dict[str, Any]:
     test_file = base_dir / "tests" / "test_checkout_ui.py"
     test_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Intentionally failing test looking for old ID '#submit-btn'
     test_content = (
         "def test_checkout_button_click():\n"
-        "    html_dom = '<button data-testid=\"checkout-submit\">Place Order</button>'\n"
-        "    old_selector = '#submit-btn'\n"
-        "    # Test fails because old_selector is missing\n"
-        "    assert old_selector in html_dom, f\"Selector '{old_selector}' not found in DOM!\"\n"
+        "    # Simulated locator registry matching the updated UI\n"
+        "    locators = {'[data-testid=\"checkout-submit\"]': '<button>Place Order</button>'}\n"
+        "    selector = '#submit-btn'\n"
+        "    assert selector in locators, f\"Error: locator('{selector}') resolved to 0 elements. Valid locator: '[data-testid=\\\"checkout-submit\\\"]'\"\n"
     )
     test_file.write_text(test_content, encoding="utf-8")
 
     logs = (
         "FAIL tests/test_checkout_ui.py::test_checkout_button_click\n"
-        "AssertionError: Selector '#submit-btn' not found in DOM!\n"
-        "Expected '#submit-btn' in '<button data-testid=\"checkout-submit\">Place Order</button>'\n"
-    )
-
-    patch_diff = (
-        "--- a/tests/test_checkout_ui.py\n"
-        "+++ b/tests/test_checkout_ui.py\n"
-        "@@ -3,2 +3,2 @@\n"
-        "-    old_selector = '#submit-btn'\n"
-        "+    old_selector = 'data-testid=\"checkout-submit\"'\n"
-    )
-
-    triage_report = TriageReport(
-        failure_type=FailureType.SELECTOR_DRIFT,
-        root_cause="The UI test failed because '#submit-btn' was replaced with 'data-testid=\"checkout-submit\"'.",
-        target_files=["tests/test_checkout_ui.py"],
-        confidence=0.98,
-        evidence_snippets=["AssertionError: Selector '#submit-btn' not found in DOM!"],
-    )
-
-    proposal = PatchProposal(
-        file_path="tests/test_checkout_ui.py",
-        unified_diff=patch_diff,
-        explanation="Updated outdated CSS selector from '#submit-btn' to 'data-testid=\"checkout-submit\"'.",
-        patch_strategy="selector_update",
+        "__________________________ test_checkout_button_click __________________________\n"
+        "    def test_checkout_button_click():\n"
+        ">       assert selector in locators\n"
+        "E       AssertionError: Error: locator('#submit-btn') resolved to 0 elements. Valid locator: '[data-testid=\"checkout-submit\"]'\n"
+        "tests/test_checkout_ui.py:5: AssertionError\n"
     )
 
     return {
@@ -118,8 +97,6 @@ def create_selector_drift_scenario(base_dir: Path) -> dict[str, Any]:
         "expected": "resolved",
         "logs": logs,
         "target_file": "tests/test_checkout_ui.py",
-        "triage": triage_report,
-        "proposal": proposal,
     }
 
 
@@ -127,10 +104,11 @@ def create_app_bug_scenario(base_dir: Path) -> dict[str, Any]:
     """Scenario 2: Business logic bug in pricing calculation."""
     app_file = base_dir / "app" / "cart.py"
     app_file.parent.mkdir(parents=True, exist_ok=True)
+    (base_dir / "app" / "__init__.py").touch()
     test_file = base_dir / "tests" / "test_cart.py"
     test_file.parent.mkdir(parents=True, exist_ok=True)
+    (base_dir / "tests" / "__init__.py").touch()
 
-    # Buggy business logic: discount doubled by mistake
     app_content = (
         "def calculate_discounted_total(price: float, discount: float) -> float:\n"
         "    # Bug: double subtraction\n"
@@ -141,7 +119,6 @@ def create_app_bug_scenario(base_dir: Path) -> dict[str, Any]:
     test_content = (
         "from app.cart import calculate_discounted_total\n\n"
         "def test_pricing():\n"
-        "    # 100 with 15 discount should equal 85.0\n"
         "    result = calculate_discounted_total(100.0, 15.0)\n"
         "    assert result == 85.0, f\"Expected 85.0, got {result}\"\n"
     )
@@ -149,31 +126,15 @@ def create_app_bug_scenario(base_dir: Path) -> dict[str, Any]:
 
     logs = (
         "FAIL tests/test_cart.py::test_pricing\n"
-        "AssertionError: Expected 85.0, got 70.0\n"
-        "assert 70.0 == 85.0\n"
-    )
-
-    patch_diff = (
-        "--- a/app/cart.py\n"
-        "+++ b/app/cart.py\n"
-        "@@ -3,1 +3,1 @@\n"
-        "-    return price - (discount * 2)\n"
-        "+    return price - discount\n"
-    )
-
-    triage_report = TriageReport(
-        failure_type=FailureType.APP_BUG,
-        root_cause="Logic error in calculate_discounted_total: discount is multiplied by 2 instead of subtracted directly.",
-        target_files=["app/cart.py"],
-        confidence=0.95,
-        evidence_snippets=["AssertionError: Expected 85.0, got 70.0"],
-    )
-
-    proposal = PatchProposal(
-        file_path="app/cart.py",
-        unified_diff=patch_diff,
-        explanation="Fixed calculate_discounted_total logic by subtracting discount directly rather than multiplying by 2.",
-        patch_strategy="logic_fix",
+        "_________________________________ test_pricing _________________________________\n"
+        "    def test_pricing():\n"
+        ">       result = calculate_discounted_total(100.0, 15.0)\n"
+        "tests/test_cart.py:4: \n"
+        "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n"
+        "app/cart.py:3: in calculate_discounted_total\n"
+        ">   return price - (discount * 2)\n"
+        "E   AssertionError: Expected 85.0, got 70.0\n"
+        "E   assert 70.0 == 85.0\n"
     )
 
     return {
@@ -182,8 +143,6 @@ def create_app_bug_scenario(base_dir: Path) -> dict[str, Any]:
         "expected": "resolved",
         "logs": logs,
         "target_file": "app/cart.py",
-        "triage": triage_report,
-        "proposal": proposal,
     }
 
 
@@ -192,43 +151,17 @@ def create_flaky_env_scenario(base_dir: Path) -> dict[str, Any]:
     test_file = base_dir / "tests" / "test_infra.py"
     test_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Permanent failure simulating external service down
     test_content = (
         "import os\n\n"
         "def test_external_gateway_connectivity():\n"
-        "    # Simulates missing external database/gateway\n"
         "    gateway_online = os.getenv('GATEWAY_ONLINE', 'false') == 'true'\n"
-        "    assert gateway_online, 'GatewayConnectionError: 503 Service Unavailable (External dependency offline)'\n"
+        "    assert gateway_online, 'GatewayConnectionError: 503 Service Unavailable (External payment gateway offline)'\n"
     )
     test_file.write_text(test_content, encoding="utf-8")
 
     logs = (
         "FAIL tests/test_infra.py::test_external_gateway_connectivity\n"
-        "AssertionError: GatewayConnectionError: 503 Service Unavailable (External dependency offline)\n"
-    )
-
-    # Ineffective patch (cannot fix external infrastructure from code)
-    patch_diff = (
-        "--- a/tests/test_infra.py\n"
-        "+++ b/tests/test_infra.py\n"
-        "@@ -5,1 +5,1 @@\n"
-        "-    # Simulates missing external database/gateway\n"
-        "+    # Attempted retry\n"
-    )
-
-    triage_report = TriageReport(
-        failure_type=FailureType.FLAKY_ENV,
-        root_cause="External payment gateway returned 503 Service Unavailable due to environmental outage.",
-        target_files=["tests/test_infra.py"],
-        confidence=0.90,
-        evidence_snippets=["GatewayConnectionError: 503 Service Unavailable"],
-    )
-
-    proposal = PatchProposal(
-        file_path="tests/test_infra.py",
-        unified_diff=patch_diff,
-        explanation="Attempted retry configuration for flaky external gateway connection.",
-        patch_strategy="env_pin",
+        "AssertionError: GatewayConnectionError: 503 Service Unavailable (External payment gateway offline)\n"
     )
 
     return {
@@ -237,8 +170,6 @@ def create_flaky_env_scenario(base_dir: Path) -> dict[str, Any]:
         "expected": "escalated",
         "logs": logs,
         "target_file": "tests/test_infra.py",
-        "triage": triage_report,
-        "proposal": proposal,
     }
 
 
@@ -249,13 +180,12 @@ def create_flaky_env_scenario(base_dir: Path) -> dict[str, Any]:
 def run_single_scenario(
     scenario: dict[str, Any],
     temp_repo_dir: Path,
-    mock_llm: bool = True,
     verbose: bool = False,
 ) -> BenchmarkResult:
-    """Executes the full LangGraph state machine against a single failure scenario."""
+    """Executes the full LangGraph state machine live against Qwen3.5 9B and Docker."""
     t0 = time.monotonic()
 
-    # 1. Setup GitHub mock integration
+    # 1. Setup GitHub integration wrapper (mocked for PR push only)
     mock_gh = MagicMock(spec=GitHubIntegration)
     mock_gh.fetch_workflow_logs.return_value = scenario["logs"]
     target_file = temp_repo_dir / scenario["target_file"]
@@ -264,32 +194,24 @@ def run_single_scenario(
     mock_gh.create_fix_branch_and_commit.return_value = f"pipelinedoctor/fix-{scenario['type']}"
     mock_gh.open_draft_pr.return_value = f"https://github.com/ayoubanlouf/PipelineDoctor/pull/{abs(hash(scenario['name'])) % 1000}"
 
-    # 2. Setup LLM Client (mock or live)
-    if mock_llm:
-        llm = MagicMock(spec=LLMClient)
-        llm.triage_failure.return_value = (scenario["triage"], {"total_tokens": 300})
-        llm.propose_patch.return_value = (scenario["proposal"], {"total_tokens": 450})
-    else:
-        try:
-            llm = LLMClient()
-            # Smoke check connectivity
-            llm.client.models.list()
-        except Exception as e:
-            if verbose:
-                print(f"  [Notice] Live LLM offline ({e}). Falling back to deterministic mode.")
-            llm = MagicMock(spec=LLMClient)
-            llm.triage_failure.return_value = (scenario["triage"], {"total_tokens": 300})
-            llm.propose_patch.return_value = (scenario["proposal"], {"total_tokens": 450})
+    # 2. Setup Real Live LLM Client (pointed at Bionic on port 1235)
+    settings = Settings(
+        BIONIC_BASE_URL="http://localhost:1235/v1",
+        BIONIC_MODEL="qwen3.5-9b-uncensored-hauhaucs-aggressive",
+        MAX_ITERATIONS=3,
+        LLM_TIMEOUT_SECONDS=180,
+    )
+    llm = LLMClient(settings=settings)
 
-    # 3. Setup Sandbox Executor (ephemeral runner with fallback)
-    sandbox = SandboxExecutor()
+    # 3. Setup Sandbox Executor (executes in real Docker containers)
+    sandbox = SandboxExecutor(settings=settings)
 
     # 4. Construct LangGraph state machine
     graph = create_healing_graph(
         llm_client=llm,
         sandbox_executor=sandbox,
         github_integration=mock_gh,
-        settings=Settings(MAX_ITERATIONS=3),
+        settings=settings,
     )
 
     event = WorkflowFailureEvent(
@@ -338,6 +260,11 @@ def run_single_scenario(
         # Expected escalation
         passed = actual_phase == AgentPhase.ESCALATE
 
+    if verbose:
+        print(f"      [DEBUG] Proposals generated: {len(final_state.get('patch_proposals', []))}")
+        for p in final_state.get("patch_proposals", []):
+            print(f"      [DIFF] {p.file_path}:\n{p.unified_diff}")
+
     return BenchmarkResult(
         scenario_name=scenario["name"],
         failure_type=scenario["type"],
@@ -353,20 +280,30 @@ def run_single_scenario(
     )
 
 
-def run_benchmark(mock_llm: bool = True, verbose: bool = False) -> list[BenchmarkResult]:
-    """Runs all 3 benchmark scenarios in separate temporary directories."""
+def run_benchmark(verbose: bool = False) -> list[BenchmarkResult]:
+    """Runs all 3 benchmark scenarios live against local Qwen3.5 9B and Docker."""
     print("=" * 70)
-    print("  PipelineDoctor — Autonomous Self-Healing CI/CD Benchmark")
-    print(f"  Mode : {'Deterministic Mock LLM' if mock_llm else 'Live Bionic LLM'}")
+    print("  PipelineDoctor — Live Autonomous Self-Healing CI/CD Benchmark")
+    print("  LLM Endpoint : http://localhost:1235/v1 (Qwen3.5 9B)")
+    print("  Sandbox      : Real Docker Containers (isolated ephemeral workspaces)")
     print("=" * 70)
+
+    # Pre-flight check: verify Bionic is responsive
+    test_client = LLMClient()
+    try:
+        models = [m.id for m in test_client.client.models.list().data]
+        print(f"✔ Live LLM connected. Available models: {models}\n")
+    except Exception as exc:
+        print(f"✘ Cannot connect to live LLM at http://localhost:1235/v1: {exc}")
+        sys.exit(1)
 
     results: list[BenchmarkResult] = []
 
     # Scenario 1: Selector Drift
     with tempfile.TemporaryDirectory(prefix="bench_sel_") as tmp_dir:
         scen1 = create_selector_drift_scenario(Path(tmp_dir))
-        print(f"\n[1/3] Running {scen1['name']}...")
-        res1 = run_single_scenario(scen1, Path(tmp_dir), mock_llm=mock_llm, verbose=verbose)
+        print(f"[1/3] Running {scen1['name']}...")
+        res1 = run_single_scenario(scen1, Path(tmp_dir), verbose=verbose)
         results.append(res1)
         print(f"      Outcome: {res1.actual_phase} in {res1.iterations} iters ({res1.duration_seconds}s)")
 
@@ -374,7 +311,7 @@ def run_benchmark(mock_llm: bool = True, verbose: bool = False) -> list[Benchmar
     with tempfile.TemporaryDirectory(prefix="bench_app_") as tmp_dir:
         scen2 = create_app_bug_scenario(Path(tmp_dir))
         print(f"\n[2/3] Running {scen2['name']}...")
-        res2 = run_single_scenario(scen2, Path(tmp_dir), mock_llm=mock_llm, verbose=verbose)
+        res2 = run_single_scenario(scen2, Path(tmp_dir), verbose=verbose)
         results.append(res2)
         print(f"      Outcome: {res2.actual_phase} in {res2.iterations} iters ({res2.duration_seconds}s)")
 
@@ -382,7 +319,7 @@ def run_benchmark(mock_llm: bool = True, verbose: bool = False) -> list[Benchmar
     with tempfile.TemporaryDirectory(prefix="bench_flk_") as tmp_dir:
         scen3 = create_flaky_env_scenario(Path(tmp_dir))
         print(f"\n[3/3] Running {scen3['name']}...")
-        res3 = run_single_scenario(scen3, Path(tmp_dir), mock_llm=mock_llm, verbose=verbose)
+        res3 = run_single_scenario(scen3, Path(tmp_dir), verbose=verbose)
         results.append(res3)
         print(f"      Outcome: {res3.actual_phase} in {res3.iterations} iters ({res3.duration_seconds}s)")
 
@@ -392,7 +329,7 @@ def run_benchmark(mock_llm: bool = True, verbose: bool = False) -> list[Benchmar
 def print_summary_table(results: list[BenchmarkResult]) -> None:
     """Prints a clean benchmark summary table."""
     print("\n" + "=" * 70)
-    print("  BENCHMARK SUMMARY REPORT")
+    print("  LIVE BENCHMARK SUMMARY REPORT (Qwen3.5 9B & Docker)")
     print("=" * 70)
 
     headers = f"{'Scenario':<28} | {'Type':<15} | {'Expected':<10} | {'Actual':<10} | {'Iters':<6} | {'MTTF'}"
@@ -427,17 +364,12 @@ def print_summary_table(results: list[BenchmarkResult]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="PipelineDoctor E2E Benchmark Suite")
-    parser.add_argument("--mock-llm", action="store_true", default=False,
-                        help="Run using deterministic mock responses (offline benchmark)")
-    parser.add_argument("--live-llm", action="store_true", default=False,
-                        help="Attempt live Bionic LLM completions")
+    parser = argparse.ArgumentParser(description="PipelineDoctor Live E2E Benchmark Suite")
     parser.add_argument("--verbose", "-v", action="store_true", default=False,
                         help="Print verbose output")
     args = parser.parse_args()
 
-    mock = not args.live_llm or args.mock_llm
-    results = run_benchmark(mock_llm=mock, verbose=args.verbose)
+    results = run_benchmark(verbose=args.verbose)
     print_summary_table(results)
 
     all_passed = all(r.passed for r in results)

@@ -54,11 +54,10 @@ from pipelinedoctor.schemas import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-# Default control plane endpoint and model alias
-LLM_BASE_URL = "http://localhost:7800/v1"
-LLM_FALLBACK_URL = "http://localhost:1235/v1"
+# Default Bionic endpoint and model ID
+LLM_BASE_URL = "http://localhost:1235/v1"
 LLM_API_KEY = "not-needed"           # Bionic ignores Authorization header
-LLM_MODEL = "Qwen3.5 9B"             # Accepted alias (maps to qwen3.5-9b-uncensored-hauhaucs-aggressive)
+LLM_MODEL = "qwen3.5-9b-uncensored-hauhaucs-aggressive"  # Exact model ID from /v1/models
 LLM_TIMEOUT = 120                    # seconds per call
 MAX_TOKENS = 2000                    # must be large enough for reasoning + JSON output
 
@@ -408,23 +407,9 @@ def test_connectivity(client: OpenAI) -> bool:
             _warn(f"Endpoint reachable at {client.base_url} but returned an empty model list")
         return True
     except OpenAIError as exc:
-        # Check if fallback port 1235 is reachable
-        if "7800" in str(client.base_url):
-            try:
-                fallback_client = OpenAI(base_url=LLM_FALLBACK_URL, api_key=LLM_API_KEY)
-                models = fallback_client.models.list()
-                _warn(f"Port 7800 unreachable, but Bionic was found directly at {LLM_FALLBACK_URL}!")
-                client.base_url = fallback_client.base_url
-                names = [m.id for m in models.data]
-                _ok(f"Endpoint switched to {client.base_url}. Available models: {names}")
-                return True
-            except Exception:
-                pass
-
         _fail(f"Cannot reach {client.base_url}: {exc}")
         print(
-            f"\n  {YELLOW}Hint:{RESET} Make sure your Bionic (or llama.cpp) server is running:\n"
-            "    bionic serve --port 7800 --model 'Qwen3.5 9B'\n"
+            f"\n  {YELLOW}Hint:{RESET} Make sure your Bionic (or llama.cpp) server is running at {client.base_url}\n"
         )
         return False
 

@@ -18,12 +18,12 @@ class Settings(BaseSettings):
 
     # ── LLM Settings ──────────────────────────────────────────────────────
     BIONIC_BASE_URL: str = Field(
-        default="http://localhost:7800/v1",
+        default="http://localhost:1235/v1",
         description="Base URL for local OpenAI-compatible endpoint (Bionic/llama.cpp)",
     )
     BIONIC_MODEL: str = Field(
-        default="Qwen3.5 9B",
-        description="Model name/id to query",
+        default="qwen3.5-9b-uncensored-hauhaucs-aggressive",
+        description="Model name/id to query (as returned by /v1/models)",
     )
     LLM_TIMEOUT_SECONDS: int = Field(
         default=120,
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # ── Sandbox Settings ──────────────────────────────────────────────────
     DOCKER_IMAGE: str = Field(
-        default="python:3.11-slim",
+        default="pipelinedoctor-sandbox:latest",
         description="Default Docker image for test verification sandbox",
     )
     SANDBOX_TIMEOUT_SECONDS: int = Field(

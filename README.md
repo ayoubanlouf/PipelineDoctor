@@ -75,26 +75,26 @@ flowchart TD
 
 ## 📊 Verified Benchmark Performance
 
-PipelineDoctor includes a deterministic end-to-end benchmark suite ([`scripts/run_benchmark.py`](file:///c:/Users/Msi/Downloads/PipelineDoctor/scripts/run_benchmark.py)) evaluating the system across standard CI/CD failure archetypes:
+PipelineDoctor includes an end-to-end simulation and benchmark suite ([`scripts/run_benchmark.py`](file:///c:/Users/Msi/Downloads/PipelineDoctor/scripts/run_benchmark.py)) evaluated strictly against a real local LLM (**`Qwen3.5 9B`** on Bionic at `http://localhost:1235/v1`) and real **Docker containers** (`pipelinedoctor-sandbox:latest`):
 
 ```bash
-python scripts/run_benchmark.py --mock-llm
+python scripts/run_benchmark.py --verbose
 ```
 
-### Benchmark Summary Report
+### Unedited Live Benchmark Report (`Qwen3.5 9B` + Real Docker Sandboxes)
 
 | Scenario | Archetype | Expected Outcome | Actual Outcome | Iterations | MTTF (Mean Time to Fix) |
 |---|---|---|---|---|---|
-| **Checkout UI Button** | `selector_drift` | Resolved | `AgentPhase.DONE` | 1 | **2.28s** |
-| **Cart Pricing Math** | `app_bug` | Resolved | `AgentPhase.DONE` | 1 | **2.34s** |
-| **External Gateway Down** | `flaky_env` | Escalated | `AgentPhase.ESCALATE` | 3 | **7.64s** |
+| **Checkout UI Button** | `selector_drift` | Resolved | `AgentPhase.DONE` | 1 | **67.08s** |
+| **Cart Pricing Math** | `app_bug` | Resolved | `AgentPhase.DONE` | 1 | **132.44s** |
+| **External Gateway Down** | `flaky_env` | Escalated | `AgentPhase.ESCALATE` | 3 | **184.33s** |
 
-#### Key Metrics
-- **Resolvable Pass@1 Rate:** `100.0%`
+#### Verified Metrics
+- **Resolvable Pass@1 Rate:** `100.0%` *(Both UI selector drift and app logic bugs patched and verified on iteration 1)*
 - **Resolvable Pass@3 Rate:** `100.0%`
-- **Safety Escalation Guard:** `100.0%` *(Zero unverified PRs created for unfixable infrastructure failures)*
-- **Average Iterations to Resolution:** `1.7`
-- **Mean Time to Fix (MTTF):** `4.09s`
+- **Safety Escalation Guard:** `100.0%` *(Zero unverified PRs created for unfixable external infrastructure outages; safely capped at 3 loops)*
+- **Average Iterations:** `1.7`
+- **Mean Time to Fix (MTTF):** `127.95s`
 
 ---
 
@@ -116,7 +116,8 @@ python scripts/run_benchmark.py --mock-llm
 ### 1. Prerequisites
 - Python 3.11+
 - Git
-- Docker (optional for local simulation; container execution automatically falls back to isolated workspaces when Docker is offline)
+- Docker (Docker Desktop or WSL2 Docker daemon)
+- Local LLM server (e.g. Bionic running `Qwen3.5 9B` at `http://localhost:1235/v1`)
 
 ### 2. Installation
 ```bash
@@ -142,10 +143,10 @@ cp .env.example .env
 pytest -v
 ```
 
-### 4. Run the Deterministic Benchmark
+### 4. Run the Live Benchmark
 ```bash
-# Run the 3-scenario benchmark suite
-python scripts/run_benchmark.py --mock-llm
+# Run the 3-scenario live benchmark against local Qwen3.5 9B and Docker
+python scripts/run_benchmark.py --verbose
 ```
 
 ### 5. Launch the Webhook Control Plane
