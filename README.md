@@ -223,8 +223,7 @@ PipelineDoctor/
 │       └── github.py                  # PyGithub client (logs, branches, draft PRs)
 ├── scripts/
 │   ├── run_benchmark.py               # E2E simulation and benchmark suite
-│   ├── test_llm_contract.py           # LLM structured-output smoke test harness
-│   └── proxy_7800.py                  # Local port forwarder utility
+│   └── test_llm_contract.py           # LLM structured-output smoke test harness
 └── tests/
     ├── __init__.py
     └── test_graph_flow.py             # Unit and integration test suite (100% pass)
