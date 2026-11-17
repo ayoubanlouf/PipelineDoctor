@@ -1,0 +1,106 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Project Metadata
+# ---------------------------------------------------------------------------
+[project]
+name = "pipelinedoctor"
+version = "0.1.0"
+description = "Autonomous, event-driven Self-Healing CI/CD & QA agent system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+authors = [
+  { name = "PipelineDoctor Team" },
+]
+
+keywords = ["ci", "cd", "self-healing", "llm", "langgraph", "devops"]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Testing",
+]
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies  (pinned to minor, loose patch for reproducibility)
+# ---------------------------------------------------------------------------
+dependencies = [
+  # ── Web / API ──────────────────────────────────────────────────────────
+  "fastapi>=0.111,<0.113",
+  "uvicorn[standard]>=0.29,<0.31",
+  "httpx>=0.27,<0.29",          # async HTTP client for internal calls
+
+  # ── LangGraph / LangChain ─────────────────────────────────────────────
+  "langgraph>=0.2,<0.4",
+  "langchain-openai>=0.1,<0.3", # OpenAI-compat wrapper (hits local Bionic)
+  "langchain-core>=0.2,<0.4",
+
+  # ── OpenAI SDK (direct, for structured-output smoke test) ─────────────
+  "openai>=1.35,<2.0",
+
+  # ── Docker SDK ────────────────────────────────────────────────────────
+  "docker>=7.1,<8.0",
+
+  # ── GitHub Integration ────────────────────────────────────────────────
+  "PyGithub>=2.3,<3.0",
+
+  # ── Validation / Settings ─────────────────────────────────────────────
+  "pydantic>=2.7,<3.0",
+  "pydantic-settings>=2.3,<3.0",
+
+  # ── Utilities ─────────────────────────────────────────────────────────
+  "tenacity>=8.4,<9.0",         # retry decorator for LLM calls
+  "structlog>=24.2,<26.0",      # structured JSON logging
+  "python-multipart>=0.0.9",    # FastAPI form/file parsing
+  "gitpython>=3.1,<4.0",        # local git ops for diff generation
+]
+
+# ---------------------------------------------------------------------------
+# Optional / dev dependencies
+# ---------------------------------------------------------------------------
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-httpx>=0.30",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "ipython>=8.25",
+]
+
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+[project.scripts]
+pipelinedoctor = "pipelinedoctor.api.main:cli"
+
+# ---------------------------------------------------------------------------
+# Tool configuration
+# ---------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+packages = ["pipelinedoctor"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
