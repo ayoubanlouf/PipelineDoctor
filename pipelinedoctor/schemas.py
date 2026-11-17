@@ -122,8 +122,14 @@ class WorkflowFailureEvent(BaseModel):
 
     # ── Workflow context ───────────────────────────────────────────────────
     run_id: int = Field(..., description="GitHub Actions ``workflow_run.id``")
-    workflow_name: str = Field(..., description="Name of the failed GitHub Actions workflow")
-    failing_job: FailingJob = Field(..., description="The specific job that failed")
+    workflow_name: str = Field(
+        default="CI Workflow",
+        description="Name of the failed GitHub Actions workflow",
+    )
+    failing_job: FailingJob | None = Field(
+        default=None,
+        description="The specific job that failed",
+    )
 
     # ── Raw artefacts (populated lazily by the integrations layer) ────────
     raw_logs: str | None = Field(
@@ -134,6 +140,20 @@ class WorkflowFailureEvent(BaseModel):
         None,
         description="URL of the Playwright HTML report artefact, if applicable",
     )
+
+    @model_validator(mode="after")
+    def _ensure_failing_job(self) -> WorkflowFailureEvent:
+        if self.failing_job is None:
+            object.__setattr__(
+                self,
+                "failing_job",
+                FailingJob(
+                    job_id=self.run_id,
+                    job_name=self.workflow_name,
+                    conclusion="failure",
+                ),
+            )
+        return self
 
     @field_validator("commit_sha")
     @classmethod

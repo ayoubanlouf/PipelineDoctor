@@ -350,3 +350,31 @@ def test_api_webhook_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data["status"] == "accepted"
     assert data["run_id"] == 998877
     assert data["repo"] == "org/repo"
+
+
+def test_api_heal_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TestClient(app)
+    mock_run = MagicMock()
+    mock_run.return_value = {
+        "current_phase": AgentPhase.DONE,
+        "iteration": 1,
+        "fix_branch": "pipelinedoctor/fix-run-12345",
+        "pr_url": "https://github.com/org/repo/pull/1",
+        "errors": [],
+    }
+    monkeypatch.setattr("pipelinedoctor.api.main.run_healing_pipeline", mock_run)
+
+    payload = {
+        "repo": "org/repo",
+        "branch": "main",
+        "commit_sha": "a" * 40,
+        "run_id": 12345,
+    }
+    resp = client.post("/heal", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["phase"] == "done"
+    assert data["pr_url"] == "https://github.com/org/repo/pull/1"
+    assert data["repo"] == "org/repo"
+

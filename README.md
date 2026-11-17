@@ -157,20 +157,60 @@ uvicorn pipelinedoctor.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+## ⚡ Optional n8n Orchestration & Alerting Stack
+
+PipelineDoctor provides an optional **Docker Compose stack** and exportable **n8n workflow** (`n8n/pipeline_doctor_workflow.json`) for teams that prefer visual webhook routing and team notifications (Slack/Discord) without touching the core LangGraph verification engine:
+
+```mermaid
+flowchart LR
+    GH[GitHub Failure Webhook] --> N8N[n8n Workflow Engine :5678]
+    N8N -->|POST /heal| API[PipelineDoctor API :8000]
+    API -->|LangGraph Loop| SANDBOX[(Docker Ephemeral Sandbox)]
+    SANDBOX -->|Deterministic Exit Code| API
+    API -->|Outcome JSON| N8N
+    N8N -->|Phase == 'done'| SLACK[Slack/Discord: Healed + Draft PR Link]
+    N8N -->|Phase == 'escalate'| ALERT[Slack/Discord: Escalation Alert]
+```
+
+### 1. Launch with Docker Compose
+```bash
+# Build PipelineDoctor and launch n8n alongside it
+docker compose up -d
+```
+- **PipelineDoctor Control Plane:** Available at `http://localhost:8000` (mounts `/var/run/docker.sock` to spawn isolated verification sandboxes and routes to local LLM via `host.docker.internal`).
+- **n8n Orchestration Console:** Available at `http://localhost:5678`.
+
+### 2. Import the Ready-to-Use n8n Workflow
+1. Open `http://localhost:5678` in your browser.
+2. Select **Add workflow** -> **Import from File**.
+3. Choose [`n8n/pipeline_doctor_workflow.json`](file:///c:/Users/Msi/Downloads/PipelineDoctor/n8n/pipeline_doctor_workflow.json) (or browse to `/workflows` in the container).
+4. Update the placeholder Slack/Discord webhook URLs in the two alert nodes.
+5. Set your GitHub repository webhook to deliver `workflow_run` events to:
+   ```
+   http://<your-server-or-domain>:5678/webhook/github-workflow-failure
+   ```
+
+---
+
 ## 📂 Project Structure
 
 ```
 PipelineDoctor/
 ├── pyproject.toml                     # Modern Hatchling package configuration
+├── docker-compose.yml                 # Orchestration stack (PipelineDoctor + n8n)
+├── Dockerfile                         # Lightweight container for FastAPI control plane
+├── .dockerignore                      # Container build exclusion rules
 ├── .gitignore                         # Strict repository hygiene rules
 ├── .env.example                       # Pydantic-settings environment documentation
 ├── README.md                          # Recruiter-ready technical documentation
+├── n8n/
+│   └── pipeline_doctor_workflow.json  # Importable n8n visual automation workflow
 ├── pipelinedoctor/
 │   ├── schemas.py                     # Single source of truth for Pydantic v2 contracts
 │   ├── config.py                      # Application settings via pydantic-settings
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── main.py                    # FastAPI webhook listener & control plane
+│   │   └── main.py                    # FastAPI webhook listener & /heal control plane
 │   ├── agents/
 │   │   ├── __init__.py
 │   │   ├── llm_client.py              # OpenAI-compat client + <think> stripper & fallback parser
@@ -187,7 +227,7 @@ PipelineDoctor/
 │   └── proxy_7800.py                  # Local port forwarder utility
 └── tests/
     ├── __init__.py
-    └── test_graph_flow.py             # 8 unit and integration tests (100% pass)
+    └── test_graph_flow.py             # Unit and integration test suite (100% pass)
 ```
 
 ---

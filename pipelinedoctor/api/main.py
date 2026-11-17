@@ -75,7 +75,10 @@ def manual_heal(event: WorkflowFailureEvent) -> dict[str, Any]:
     final_state = run_healing_pipeline(event)
     return {
         "status": "completed",
-        "phase": final_state.get("current_phase"),
+        "phase": str(final_state.get("current_phase")),
+        "repo": event.repo,
+        "run_id": event.run_id,
+        "commit_sha": event.commit_sha,
         "iteration": final_state.get("iteration"),
         "fix_branch": final_state.get("fix_branch"),
         "pr_url": final_state.get("pr_url"),

@@ -1,0 +1,52 @@
+services:
+  # ── PipelineDoctor FastAPI Control Plane ────────────────────────────────────
+  pipelinedoctor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pipelinedoctor
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Allow container to reach host-bound local LLM (Bionic on host port 1235)
+      - BIONIC_BASE_URL=http://host.docker.internal:1235/v1
+      - DOCKER_IMAGE=${DOCKER_IMAGE:-pipelinedoctor-sandbox:latest}
+    volumes:
+      # Mount host Docker daemon socket for isolated sandbox verification
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      # Resolve host machine IP inside container
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - pipelinedoctor-network
+
+  # ── n8n Workflow Orchestration & Alerting ──────────────────────────────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: pipelinedoctor-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+    restart: unless-stopped
+    depends_on:
+      - pipelinedoctor
+    networks:
+      - pipelinedoctor-network
+
+networks:
+  pipelinedoctor-network:
+    name: pipelinedoctor-network
+    driver: bridge
+
+volumes:
+  n8n_data:
